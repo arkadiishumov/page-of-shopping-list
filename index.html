@@ -26,12 +26,9 @@
     font-size: 18px;
     font-weight: 600;
     margin-bottom: 20px;
-    color: var(--tg-theme-text-color, #000000);
   }
 
-  .input-wrap {
-    margin-bottom: 16px;
-  }
+  .input-wrap { margin-bottom: 16px; }
 
   input[type="text"] {
     width: 100%;
@@ -44,11 +41,9 @@
     outline: none;
     -webkit-appearance: none;
   }
-
   input[type="text"]:focus {
     border-color: var(--tg-theme-button-color, #3390ec);
   }
-
   input[type="text"]::placeholder {
     color: var(--tg-theme-hint-color, #999999);
   }
@@ -65,22 +60,21 @@
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-
   button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-
-  button:active:not(:disabled) {
-    opacity: 0.85;
-  }
+  button:active:not(:disabled) { opacity: 0.85; }
 
   .hint {
     margin-top: 14px;
     font-size: 13px;
     color: var(--tg-theme-hint-color, #888888);
     text-align: center;
+    min-height: 18px;
   }
+  .hint.error { color: #e53935; }
+  .hint.success { color: #43a047; }
 </style>
 </head>
 <body>
@@ -101,47 +95,73 @@
 
 <button id="add-btn" disabled>Добавить</button>
 
-<div class="hint">Нажми «Добавить» — окно закроется автоматически</div>
+<div class="hint" id="hint">Жми «Добавить» — окно закроется автоматически</div>
 
 <script>
-  const tg = window.Telegram.WebApp;
+  // !!! ВАЖНО: впиши сюда URL твоего бота на Railway (тот самый
+  // публичный домен, который Railway даёт под "Networking → Public Networking").
+  // Например: https://shopping-bot-production-1234.up.railway.app
+  const BOT_API_URL = "https://REPLACE-ME.up.railway.app";
 
-  // Подгоняем Web App под тему Telegram и разворачиваем на весь экран
+  const tg = window.Telegram.WebApp;
   tg.ready();
   tg.expand();
 
   const input = document.getElementById('name');
   const btn = document.getElementById('add-btn');
+  const hint = document.getElementById('hint');
 
-  // Автофокус на поле ввода + открываем клавиатуру на мобилке
-  // (autofocus в HTML не всегда срабатывает в Web App, поэтому форсируем)
-  setTimeout(() => {
-    input.focus();
-    input.click();
-  }, 100);
+  // Автофокус (на мобилке открывает клавиатуру)
+  setTimeout(() => { input.focus(); }, 100);
 
-  // Активируем кнопку, только если что-то введено
   function updateBtn() {
     btn.disabled = input.value.trim().length === 0;
   }
   input.addEventListener('input', updateBtn);
 
-  function submit() {
+  function setHint(text, cls) {
+    hint.textContent = text;
+    hint.className = 'hint' + (cls ? ' ' + cls : '');
+  }
+
+  async function submit() {
     const name = input.value.trim();
     if (!name) return;
 
-    // Отправляем данные обратно боту в виде JSON.
-    // Бот получит это в поле message.web_app_data.data
-    tg.sendData(JSON.stringify({ action: 'add', name: name }));
+    btn.disabled = true;
+    setHint('Добавляю…');
 
-    // Telegram сам закроет Web App после sendData,
-    // но на всякий случай вызовем явно
-    tg.close();
+    try {
+      const res = await fetch(BOT_API_URL + '/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          init_data: tg.initData,
+          name: name
+        })
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error('HTTP ' + res.status + ': ' + txt);
+      }
+
+      const data = await res.json();
+      if (!data.ok) {
+        throw new Error(data.error || 'unknown error');
+      }
+
+      setHint('✅ Добавлено!', 'success');
+      // Закрываем Web App через короткую паузу, чтоб видно было успех
+      setTimeout(() => tg.close(), 400);
+    } catch (e) {
+      console.error(e);
+      setHint('Ошибка: ' + e.message, 'error');
+      btn.disabled = false;
+    }
   }
 
   btn.addEventListener('click', submit);
-
-  // Enter на клавиатуре = отправить
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
